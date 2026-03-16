@@ -1025,7 +1025,7 @@ void taskRunRealtimeCallbacks(timeUs_t currentTimeUs)
     afatfs_poll();
 #endif
 
-#ifdef USE_DSHOT
+#if defined(USE_DSHOT) || defined(USE_SERIAL)
     pwmCompleteMotorUpdate();
 #endif
 

@@ -34,6 +34,7 @@
 #include "drivers/timer.h"
 #include "drivers/pwm_mapping.h"
 #include "drivers/pwm_output.h"
+#include "drivers/srxl2_esc.h"
 #include "io/servo_sbus.h"
 #include "sensors/esc_sensor.h"
 
@@ -197,6 +198,11 @@ static void pwmWriteStandard(uint8_t index, uint16_t value)
     if (motors[index].pwmPort) {
         *(motors[index].pwmPort->ccr) = lrintf((value * motors[index].pwmPort->pulseScale) + motors[index].pwmPort->pulseOffset);
     }
+}
+
+static void pwmWriteSrxl2(uint8_t index, uint16_t value)
+{
+    srxl2EscWriteMotor(index, value);
 }
 
 void pwmWriteMotor(uint8_t index, uint16_t value)
@@ -460,6 +466,11 @@ static bool executeDShotCommands(void){
 #endif
 
 void pwmCompleteMotorUpdate(void) {
+    if (initMotorProtocol == PWM_TYPE_SRXL2) {
+        srxl2EscUpdate(micros());
+        return;
+    }
+
     // This only makes sense for digital motor protocols
     if (!isMotorProtocolDigital()) {
         return;
@@ -549,6 +560,15 @@ void pwmMotorPreconfigure(void)
             motorWritePtr = pwmWriteStandard;
             break;
 
+        case PWM_TYPE_SRXL2:
+            if (srxl2EscInit()) {
+                motorConfigDigitalUpdateInterval(getEscUpdateFrequency());
+                motorWritePtr = pwmWriteSrxl2;
+            } else {
+                motorWritePtr = pwmWriteNull;
+            }
+            break;
+
 #ifdef USE_DSHOT
         case PWM_TYPE_DSHOT600:
         case PWM_TYPE_DSHOT300:
@@ -583,6 +603,9 @@ uint32_t getEscUpdateFrequency(void) {
         case PWM_TYPE_DSHOT600:
             return 16000;
 
+        case PWM_TYPE_SRXL2:
+            return SRXL2_ESC_UPDATE_HZ;
+
         case PWM_TYPE_ONESHOT125:
         default:
             return 1000;
@@ -615,6 +638,10 @@ bool pwmMotorConfig(const timerHardware_t *timerHardware, uint8_t motorIndex, bo
 
     case PWM_TYPE_STANDARD:
         motors[motorIndex].pwmPort = motorConfigPwm(timerHardware, 1e-3f, 1e-3f, getEscUpdateFrequency(), enableOutput);
+        break;
+
+    case PWM_TYPE_SRXL2:
+        motors[motorIndex].pwmPort = NULL;
         break;
 
     default:

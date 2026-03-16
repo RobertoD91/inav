@@ -27,7 +27,7 @@ tables:
   - name: blackbox_device
     values: ["SERIAL", "SPIFLASH", "SDCARD", "FILE"]
   - name: motor_pwm_protocol
-    values: ["STANDARD", "ONESHOT125", "MULTISHOT", "BRUSHED", "DSHOT150", "DSHOT300", "DSHOT600"]
+    values: ["STANDARD", "ONESHOT125", "MULTISHOT", "BRUSHED", "DSHOT150", "DSHOT300", "DSHOT600", "SRXL2"]
   - name: servo_protocol
     values: ["PWM", "SBUS", "SBUS_PWM"]
   - name: failsafe_procedure

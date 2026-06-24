@@ -180,7 +180,9 @@ static bool srxl2EscValidateFrame(const uint8_t *buffer, uint8_t length)
         return false;
     }
 
-    const uint16_t expected = swap16(crc16_ccitt_update(0, buffer, length - 2));
+    // CRC is transmitted big-endian (MSB first) on the wire, so read it back the
+    // same way and compare against the locally computed value without byte-swapping.
+    const uint16_t expected = crc16_ccitt_update(0, buffer, length - 2);
     const uint16_t received = ((uint16_t)buffer[length - 2] << 8) | buffer[length - 1];
 
     return expected == received;
@@ -195,7 +197,9 @@ static void srxl2EscParseEscTelemetry(const uint8_t *payload)
     srxl2Telemetry[0].dataAge = 0;
     srxl2Telemetry[0].temperature = (swap16(esc.tempFet) == 0xFFFF) ? 0 : (int16_t)(swap16(esc.tempFet) / 10);
     srxl2Telemetry[0].voltage = (swap16(esc.voltsInput) == 0xFFFF) ? 0 : (int16_t)swap16(esc.voltsInput);
-    srxl2Telemetry[0].current = (swap16(esc.currentMotor) == 0xFFFF) ? 0 : (int32_t)(swap16(esc.currentMotor) * 10);
+    // current_motor is reported in 10 mA units, which is exactly the centiampere
+    // (0.01 A) unit expected by escSensorData_t, so store it without scaling.
+    srxl2Telemetry[0].current = (swap16(esc.currentMotor) == 0xFFFF) ? 0 : (int32_t)swap16(esc.currentMotor);
     srxl2Telemetry[0].rpm = (swap16(esc.rpm) == 0xFFFF) ? 0 : (uint32_t)swap16(esc.rpm) * 10;
 }
 
@@ -251,7 +255,9 @@ bool srxl2EscInit(void)
         return false;
     }
 
-    srxl2EscPort = openSerialPort(portConfig->identifier, FUNCTION_SRXL2_ESC, NULL, NULL, SRXL2_ESC_BAUDRATE, MODE_RXTX, SERIAL_NOT_INVERTED);
+    // SRXL2 is a single-wire half-duplex bus: throttle command and telemetry share
+    // one line on the UART TX pin, so the port must be opened in bidirectional mode.
+    srxl2EscPort = openSerialPort(portConfig->identifier, FUNCTION_SRXL2_ESC, NULL, NULL, SRXL2_ESC_BAUDRATE, MODE_RXTX, SERIAL_NOT_INVERTED | SERIAL_BIDIR);
     if (!srxl2EscPort) {
         return false;
     }

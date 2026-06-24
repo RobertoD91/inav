@@ -35,7 +35,7 @@
 
 #include "io/serial.h"
 
-#if defined(USE_SERIAL)
+#if defined(USE_SRXL2_ESC)
 
 #define SRXL2_ESC_BAUDRATE                115200
 #define SRXL2_ESC_FRAME_TIMEOUT_US        500

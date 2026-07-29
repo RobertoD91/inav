@@ -3,17 +3,19 @@ name: PR Test Builds
 # Runs after "Build firmware" completes. Uses workflow_run (rather than
 # pull_request directly) so that secrets are available even for PRs from forks.
 #
-# Publishes the built hexes as a pr-<N> prerelease on the repository set in
-# the PR_BUILDS_REPO env var (default: this repository, using the standard
-# GITHUB_TOKEN). To publish on a different repository instead, change
-# PR_BUILDS_REPO and provide a token with Contents: write access to it.
+# Publishes the built hexes as a pr-<N> prerelease. On the official
+# iNavFlight repository it keeps the original upstream behaviour: publish on
+# the dedicated iNavFlight/pr-test-builds repository using the
+# PR_BUILDS_TOKEN secret (so the main repository never accumulates pr-N
+# releases/tags). On forks it publishes on the fork itself using the
+# standard GITHUB_TOKEN, which is scoped to the fork only.
 on:
   workflow_run:
     workflows: ["Build firmware"]
     types: [completed]
 
 env:
-  PR_BUILDS_REPO: ${{ github.repository }}
+  PR_BUILDS_REPO: ${{ github.repository == 'iNavFlight/inav' && 'iNavFlight/pr-test-builds' || github.repository }}
 
 jobs:
   publish:
@@ -29,7 +31,7 @@ jobs:
       cancel-in-progress: true
     permissions:
       actions: read          # to download artifacts from the triggering workflow run
-      contents: write        # to create the pr-<N> release on this repository
+      contents: write        # forks only: create the pr-<N> release here (unused upstream)
       issues: write          # github.rest.issues.* endpoints used to post PR comments
       pull-requests: write   # to post the PR comment
 
@@ -76,14 +78,14 @@ jobs:
       # recreated fresh pointing to the new commit.
       - name: Delete existing PR release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.repository == 'iNavFlight/inav' && secrets.PR_BUILDS_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           gh release delete "pr-${{ steps.pr.outputs.number }}" \
             --repo "${PR_BUILDS_REPO}" --cleanup-tag --yes 2>/dev/null || true
 
       - name: Create PR release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.repository == 'iNavFlight/inav' && secrets.PR_BUILDS_TOKEN || secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           SHORT_SHA: ${{ steps.info.outputs.short_sha }}
           HEX_COUNT: ${{ steps.info.outputs.count }}

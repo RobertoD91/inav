@@ -1,0 +1,112 @@
+name: Build tagged release
+
+# Manually-triggered release build: builds all targets via ci.yml and
+# publishes a (pre)release on this repository with the firmware hexes
+# and SITL resources attached.
+on:
+  push:
+    tags:
+      - 'v*-srxl2-*'
+    branches:
+      - 'release/srxl2-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create (e.g. v9.1.0-srxl2-beta1)'
+        required: true
+        default: 'v9.1.0-srxl2-beta1'
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep project CMakeLists.txt|awk -F VERSION '{ gsub(/[ \t\)]/, "", $2); print $2 }')
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+      - name: Compute tag
+        id: tagname
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=v${{ steps.version.outputs.version }}-$(basename "${GITHUB_REF_NAME}")" >> $GITHUB_OUTPUT
+          fi
+      - name: download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: hexes
+          pattern: matrix-inav-*
+          merge-multiple: true
+      - name: download sitl linux
+        uses: actions/download-artifact@v4
+        with:
+          path: resources/sitl/linux
+          pattern: inav-*SITL-Linux
+          merge-multiple: true
+      - name: download sitl linux aarch64
+        uses: actions/download-artifact@v4
+        with:
+          path: resources/sitl/linux/arm64
+          pattern: inav-*SITL-Linux-aarch64
+          merge-multiple: true
+      - name: download sitl windows
+        uses: actions/download-artifact@v4
+        with:
+          path: resources/sitl/windows
+          pattern: inav-*SITL-WIN
+          merge-multiple: true
+      - name: download sitl mac
+        uses: actions/download-artifact@v4
+        with:
+          path: resources/sitl/macos
+          pattern: inav-*SITL-MacOS
+          merge-multiple: true
+      - name: Consolidate sitl files
+        run: |
+          zip -r -9 sitl-resources.zip resources/
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          name: inav-${{ steps.version.outputs.version }} ${{ github.event.inputs.tag || steps.tagname.outputs.tag }}
+          tag_name: ${{ github.event.inputs.tag || steps.tagname.outputs.tag }}
+          prerelease: true
+          draft: false
+          make_latest: false
+          files: |
+            hexes/*.hex
+            sitl-resources.zip
+          body: |
+            ### Spektrum SRXL2 ESC beta
+
+            Firmware build with Spektrum SRXL2 Smart ESC support: direct
+            single-wire control of a Smart ESC from a UART TX pad, with ESC
+            telemetry. See `docs/SRXL2_ESC.md` for wiring, configuration and
+            debugging.
+
+            Flash with **Full chip erase**.
+
+            ### Repository:
+            ${{ github.repository }}
+
+            ### Branch:
+            ${{ github.ref_name }}
+
+            ### Commit:
+            ${{ github.sha }}

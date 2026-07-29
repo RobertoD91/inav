@@ -47,6 +47,7 @@ typedef enum {
     PWM_TYPE_DSHOT150,
     PWM_TYPE_DSHOT300,
     PWM_TYPE_DSHOT600,
+    PWM_TYPE_SRXL2,
 } motorPwmProtocolTypes_e;
 
 typedef enum {

@@ -35,6 +35,7 @@
 #include "config/config_reset.h"
 
 #include "drivers/pwm_output.h"
+#include "drivers/srxl2_esc.h"
 #include "drivers/pwm_mapping.h"
 #include "drivers/time.h"
 
@@ -369,6 +370,12 @@ static void applyTurtleModeToMotors(void) {
 void FAST_CODE writeMotors(void)
 {
 #if !defined(SITL_BUILD)
+#ifdef USE_SRXL2_ESC
+    // Reversible Spektrum Smart ESC: forward the MOTOR REVERSE mode state to
+    // the SRXL2 reverse channel. The ESC firmware governs when the direction
+    // change is actually applied.
+    srxl2EscSetReverse(IS_RC_MODE_ACTIVE(BOXMOTORREVERSE));
+#endif
     for (int i = 0; i < motorCount; i++) {
         uint16_t motorValue;
 #ifdef USE_DSHOT

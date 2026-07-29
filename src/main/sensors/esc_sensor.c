@@ -42,6 +42,8 @@
 
 #include "flight/mixer.h"
 #include "drivers/pwm_output.h"
+#include "drivers/pwm_mapping.h"
+#include "drivers/srxl2_esc.h"
 #include "sensors/esc_sensor.h"
 #include "io/serial.h"
 #include "fc/config.h"
@@ -77,6 +79,27 @@ static int              bufferPosition = 0;
 static escSensorData_t  escSensorData[MAX_SUPPORTED_MOTORS];
 static escSensorData_t  escSensorDataCombined;
 static bool             escSensorDataNeedsUpdate;
+
+static bool escSensorUseSrxl2(void)
+{
+    return motorConfig()->motorPwmProtocol == PWM_TYPE_SRXL2 && srxl2EscIsInitialized();
+}
+
+static void escSensorRefreshFromSrxl2(void)
+{
+    if (!escSensorUseSrxl2()) {
+        return;
+    }
+
+    for (int i = 0; i < getMotorCount(); i++) {
+        escSensorData_t telemetry;
+        if (srxl2EscGetTelemetry(i, &telemetry)) {
+            escSensorData[i] = telemetry;
+        }
+    }
+
+    escSensorDataNeedsUpdate = true;
+}
 
 PG_REGISTER_WITH_RESET_TEMPLATE(escSensorConfig_t, escSensorConfig, PG_ESC_SENSOR_CONFIG, 1);
 PG_RESET_TEMPLATE(escSensorConfig_t, escSensorConfig,
@@ -151,12 +174,15 @@ uint32_t computeRpm(int16_t erpm) {
 
 escSensorData_t NOINLINE * getEscTelemetry(uint8_t esc)
 {
+    escSensorRefreshFromSrxl2();
     return &escSensorData[esc];
 }
 
 escSensorData_t * escSensorGetData(void)
 {
-    if (!escSensorPort) {
+    escSensorRefreshFromSrxl2();
+
+    if (!escSensorPort && !escSensorUseSrxl2()) {
         return NULL;
     }
 
@@ -207,6 +233,19 @@ bool escSensorInitialize(void)
     escSensorDataNeedsUpdate = true;
     escSensorPort = NULL;
 
+    for (int i = 0; i < MAX_SUPPORTED_MOTORS; i++) {
+        escSensorData[i].dataAge = ESC_DATA_INVALID;
+    }
+
+    if (motorConfig()->motorPwmProtocol == PWM_TYPE_SRXL2) {
+        if (srxl2EscIsInitialized()) {
+            ENABLE_STATE(ESC_SENSOR_ENABLED);
+            return true;
+        }
+
+        return false;
+    }
+
     // Fail immediately if motor output are disabled or motor outputs are not configured
     if (!feature(FEATURE_PWM_OUTPUT_ENABLE) || getMotorCount() == 0) {
         return false;
@@ -224,10 +263,6 @@ bool escSensorInitialize(void)
         return false;
     }
 
-    for (int i = 0; i < MAX_SUPPORTED_MOTORS; i++) {
-        escSensorData[i].dataAge = ESC_DATA_INVALID;
-    }
-
     ENABLE_STATE(ESC_SENSOR_ENABLED);
 
     return true;
@@ -235,6 +270,12 @@ bool escSensorInitialize(void)
 
 void escSensorUpdate(timeUs_t currentTimeUs)
 {
+    if (escSensorUseSrxl2()) {
+        UNUSED(currentTimeUs);
+        escSensorRefreshFromSrxl2();
+        return;
+    }
+
     if (!escSensorPort) {
         return;
     }

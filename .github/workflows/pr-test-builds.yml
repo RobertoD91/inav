@@ -3,12 +3,17 @@ name: PR Test Builds
 # Runs after "Build firmware" completes. Uses workflow_run (rather than
 # pull_request directly) so that secrets are available even for PRs from forks.
 #
-# Requires a repository secret PR_BUILDS_TOKEN with Contents: write access
-# to iNavFlight/pr-test-builds (fine-grained PAT or classic PAT with repo scope).
+# Publishes the built hexes as a pr-<N> prerelease on the repository set in
+# the PR_BUILDS_REPO env var (default: this repository, using the standard
+# GITHUB_TOKEN). To publish on a different repository instead, change
+# PR_BUILDS_REPO and provide a token with Contents: write access to it.
 on:
   workflow_run:
     workflows: ["Build firmware"]
     types: [completed]
+
+env:
+  PR_BUILDS_REPO: ${{ github.repository }}
 
 jobs:
   publish:
@@ -24,6 +29,7 @@ jobs:
       cancel-in-progress: true
     permissions:
       actions: read          # to download artifacts from the triggering workflow run
+      contents: write        # to create the pr-<N> release on this repository
       issues: write          # github.rest.issues.* endpoints used to post PR comments
       pull-requests: write   # to post the PR comment
 
@@ -70,14 +76,14 @@ jobs:
       # recreated fresh pointing to the new commit.
       - name: Delete existing PR release
         env:
-          GH_TOKEN: ${{ secrets.PR_BUILDS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete "pr-${{ steps.pr.outputs.number }}" \
-            --repo iNavFlight/pr-test-builds --cleanup-tag --yes 2>/dev/null || true
+            --repo "${PR_BUILDS_REPO}" --cleanup-tag --yes 2>/dev/null || true
 
       - name: Create PR release
         env:
-          GH_TOKEN: ${{ secrets.PR_BUILDS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           SHORT_SHA: ${{ steps.info.outputs.short_sha }}
           HEX_COUNT: ${{ steps.info.outputs.count }}
@@ -90,7 +96,7 @@ jobs:
             "> Development build for testing only. Use Full Chip Erase when flashing." \
             > release-notes.md
           gh release create "pr-${PR_NUMBER}" hexes/*.hex \
-            --repo iNavFlight/pr-test-builds \
+            --repo "${PR_BUILDS_REPO}" \
             --prerelease \
             --title "PR #${PR_NUMBER} (${SHORT_SHA})" \
             --notes-file release-notes.md
@@ -107,7 +113,8 @@ jobs:
             if (isNaN(prNumber)) throw new Error(`Invalid PR number: ${process.env.PR_NUMBER}`);
             const shortSha  = process.env.SHORT_SHA;
             const count     = process.env.HEX_COUNT;
-            const releaseUrl = `https://github.com/iNavFlight/pr-test-builds/releases/tag/pr-${prNumber}`;
+            const buildsRepo = process.env.PR_BUILDS_REPO || `${context.repo.owner}/${context.repo.repo}`;
+            const releaseUrl = `https://github.com/${buildsRepo}/releases/tag/pr-${prNumber}`;
 
             const body = [
               '<!-- pr-test-build -->',

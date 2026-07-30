@@ -35,6 +35,7 @@
 #include "io/osd.h"
 
 #include "drivers/pwm_output.h"
+#include "drivers/pwm_mapping.h"
 
 #include "sensors/diagnostics.h"
 #include "sensors/sensors.h"
@@ -110,6 +111,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT + 1] = {
     { .boxId = BOXGIMBALCENTER,     .boxName = "GIMBAL CENTER",     .permanentId = 67 },
     { .boxId = BOXGIMBALHTRK,       .boxName = "GIMBAL HEADTRACKER", .permanentId = 68 },
     { .boxId = BOXAUTOSPEED,        .boxName = "AUTO SPEED",        .permanentId = 69 },
+    { .boxId = BOXMOTORREVERSE,     .boxName = "MOTOR REVERSE",     .permanentId = 70 },
     { .boxId = CHECKBOX_ITEM_COUNT, .boxName = NULL,                .permanentId = 0xFF }
 };
 
@@ -358,6 +360,14 @@ void initActiveBoxIds(void)
 #ifdef USE_DSHOT
     if(STATE(MULTIROTOR) && isMotorProtocolDshot()) {
         ADD_ACTIVE_BOX(BOXTURTLE);
+    }
+#endif
+
+#ifdef USE_SRXL2_ESC
+    // Reversible Spektrum Smart ESC: expose the reverse switch only when the
+    // motor protocol actually drives the SRXL2 reverse channel.
+    if (motorConfig()->motorPwmProtocol == PWM_TYPE_SRXL2) {
+        ADD_ACTIVE_BOX(BOXMOTORREVERSE);
     }
 #endif
 

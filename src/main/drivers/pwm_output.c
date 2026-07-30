@@ -34,6 +34,7 @@
 #include "drivers/timer.h"
 #include "drivers/pwm_mapping.h"
 #include "drivers/pwm_output.h"
+#include "drivers/srxl2_esc.h"
 #include "io/servo_sbus.h"
 #include "sensors/esc_sensor.h"
 
@@ -209,6 +210,11 @@ static void pwmWriteStandard(uint8_t index, uint16_t value)
     if (motors[index].pwmPort) {
         *(motors[index].pwmPort->ccr) = lrintf((value * motors[index].pwmPort->pulseScale) + motors[index].pwmPort->pulseOffset);
     }
+}
+
+static void pwmWriteSrxl2(uint8_t index, uint16_t value)
+{
+    srxl2EscWriteMotor(index, value);
 }
 
 void pwmWriteMotor(uint8_t index, uint16_t value)
@@ -518,7 +524,27 @@ static bool executeDShotCommands(void){
 }
 #endif
 
+#else // digital motor protocol
+
+// This stub is needed to avoid ESC_SENSOR dependency on DSHOT
+void pwmRequestMotorTelemetry(int motorIndex)
+{
+    UNUSED(motorIndex);
+}
+
+#endif
+
+// pwmCompleteMotorUpdate must also exist for SRXL2-only targets (no DSHOT),
+// where it just drives the SRXL2 transmit. The digital/DSHOT body below is
+// kept behind USE_DSHOT so it is omitted on those targets.
+#if defined(USE_DSHOT) || defined(USE_SRXL2_ESC)
 void pwmCompleteMotorUpdate(void) {
+    if (initMotorProtocol == PWM_TYPE_SRXL2) {
+        srxl2EscUpdate(micros());
+        return;
+    }
+
+#ifdef USE_DSHOT
     // This only makes sense for digital motor protocols
     if (!isMotorProtocolDigital()) {
         return;
@@ -574,16 +600,8 @@ void pwmCompleteMotorUpdate(void) {
 #endif
     }
 #endif
+#endif
 }
-
-#else // digital motor protocol
-
-// This stub is needed to avoid ESC_SENSOR dependency on DSHOT
-void pwmRequestMotorTelemetry(int motorIndex)
-{
-    UNUSED(motorIndex);
-}
-
 #endif
 
 void pwmMotorPreconfigure(void)
@@ -606,6 +624,18 @@ void pwmMotorPreconfigure(void)
         case PWM_TYPE_ONESHOT125:
         case PWM_TYPE_MULTISHOT:
             motorWritePtr = pwmWriteStandard;
+            break;
+
+        case PWM_TYPE_SRXL2:
+            // SRXL2 paces its own transmissions inside srxl2EscUpdate() and
+            // pwmCompleteMotorUpdate() returns early for it, so the digital update
+            // interval is unused here. Avoid calling motorConfigDigitalUpdateInterval()
+            // which is only defined when USE_DSHOT is enabled.
+            if (srxl2EscInit()) {
+                motorWritePtr = pwmWriteSrxl2;
+            } else {
+                motorWritePtr = pwmWriteNull;
+            }
             break;
 
 #ifdef USE_DSHOT
@@ -642,6 +672,9 @@ uint32_t getEscUpdateFrequency(void) {
         case PWM_TYPE_DSHOT600:
             return 16000;
 
+        case PWM_TYPE_SRXL2:
+            return SRXL2_ESC_UPDATE_HZ;
+
         case PWM_TYPE_ONESHOT125:
         default:
             return 1000;
@@ -674,6 +707,10 @@ bool pwmMotorConfig(const timerHardware_t *timerHardware, uint8_t motorIndex, bo
 
     case PWM_TYPE_STANDARD:
         motors[motorIndex].pwmPort = motorConfigPwm(timerHardware, 1e-3f, 1e-3f, getEscUpdateFrequency(), enableOutput);
+        break;
+
+    case PWM_TYPE_SRXL2:
+        motors[motorIndex].pwmPort = NULL;
         break;
 
     default:

@@ -267,6 +267,8 @@ main_sources(COMMON_SRC
     drivers/rcc.h
     drivers/serial.c
     drivers/serial.h
+    drivers/srxl2_esc.c
+    drivers/srxl2_esc.h
     drivers/sound_beeper.c
     drivers/sound_beeper.h
     drivers/stack_check.c

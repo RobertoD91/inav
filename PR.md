@@ -36,8 +36,20 @@ tested yet.
 
 Current limitations:
 
-- single ESC on motor 1 only, no multi-ESC bus support for now
+- single ESC on motor 1 only (see below)
 - needs a hardware UART (no SoftSerial), and targets with >512KB flash
+
+About the single motor limitation: it's not as arbitrary as it looks. Two ESCs
+can't share the wire — Spektrum ESCs all ship with the same fixed device ID
+(0x40) and there's no way to change it, so on a shared bus they'd both answer
+handshakes and telemetry polls at the same time. And even if the IDs were
+different, SRXL2 carries one set of channel data for the whole bus, so every
+ESC on it would read the same throttle channel — no differential thrust, which
+kills the main reason to have per-motor control in the first place. The real
+path to twins is one UART per ESC, each with its own bus and its own throttle
+from the mixer. That needs the driver state to become per-instance instead of
+the current single global one; it's a reasonable follow-up, but I'd rather land
+the single-motor case first since that's what I can actually test on my bench.
 
 A note for review: I picked serial function bit 28 and permanentId 70 for the
 new mode box, which were the next free ones at the time of writing. Happy to

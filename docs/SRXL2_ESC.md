@@ -38,7 +38,8 @@ Telemetry consumers work as with other ESC telemetry sources, e.g.
 Current limitations:
 
 - Single ESC (motor index 0). Multi-ESC SRXL2 is not supported.
-- RPM is reported as sent by the ESC (no motor-pole scaling applied).
+- RPM is converted from the ESC's electrical RPM using `motor_poles`
+  (default 14) — set it to match the attached motor.
 - Available on targets with more than 512KB flash (`USE_SRXL2_ESC`).
 
 ### Reversible ESCs

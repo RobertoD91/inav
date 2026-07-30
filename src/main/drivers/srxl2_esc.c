@@ -230,7 +230,9 @@ static void srxl2EscParseEscTelemetry(const uint8_t *payload)
     // current_motor is reported in 10 mA units, which is exactly the centiampere
     // (0.01 A) unit expected by escSensorData_t, so store it without scaling.
     srxl2Telemetry[0].current = (swap16(esc.currentMotor) == 0xFFFF) ? 0 : (int32_t)swap16(esc.currentMotor);
-    srxl2Telemetry[0].rpm = (swap16(esc.rpm) == 0xFFFF) ? 0 : (uint32_t)swap16(esc.rpm) * 10;
+    // The ESC reports electrical RPM (in 10 RPM units): convert to shaft RPM
+    // using the pole count of the attached motor, same as DSHOT telemetry.
+    srxl2Telemetry[0].rpm = (swap16(esc.rpm) == 0xFFFF) ? 0 : (uint32_t)swap16(esc.rpm) * 10 * 2 / MAX(2, motorConfig()->motorPoleCount);
 }
 
 static void srxl2EscHandleIncomingByte(uint8_t value)
